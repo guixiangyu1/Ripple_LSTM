@@ -152,6 +152,16 @@ class NERModel(BaseModel):
                 _output = tf.nn.bidirectional_dynamic_rnn(
                         cell_fw, cell_bw, char_embeddings,
                         sequence_length=word_lengths, dtype=tf.float32)
+                # bidirectional_dynamic_rnn的输出为tuple，（outputs, output_states）
+
+                # output = (output_fw, output_bw)
+                # output_fw or output_bw .shape = [batchsize, max_time, cell.output_size]
+
+                # output_states = (output_state_fw, output_state_bw)
+                # output_state_fw和output_state_bw的类型为LSTMStateTuple
+                # LSTMStateTuple由（c，h）组成，分别代表memory cell和hidden state
+
+
 
                 # read and concat output
                 _, ((_, output_fw), (_, output_bw)) = _output
@@ -185,6 +195,7 @@ class NERModel(BaseModel):
                     sequence_length=self.sequence_lengths, dtype=tf.float32)
             output = tf.concat([output_fw, output_bw], axis=-1) # shape = [batch_size, max_sentence_length,2*hidden_size_lstm]
             output = tf.nn.dropout(output, self.dropout)
+        # sequence length 很重要
 
         with tf.variable_scope("proj"):
             W = tf.get_variable("W", dtype=tf.float32,
