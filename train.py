@@ -8,6 +8,7 @@ def main():
     #拥有词表、glove训练好的embeddings矩阵、str->id的function
     config = Config()
 
+
     # build model
     model = NERModel(config)
     model.build("train")
