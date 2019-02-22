@@ -9,17 +9,18 @@ class BW_lstm():
         self.config = config
         self.cell_bw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
         self.state = self.cell_fw.zero_state(batch_size=self.config.batch_size,dtype=tf.float32)
-        self.word_length = None
+        self.sequence_length = None
+        self.input = None
+        self.output = None
 
-    # The simplest form of RNN network generated is:
-    #
-    # state = cell.zero_state(...)
-    # outputs = []
-    # for input_ in inputs:
-    #     output, state = cell(input_, state)
-    #     outputs.append(output)
-    # return (outputs, state)
-    def push(self, input):
+    def add_all_words(self):
+        self.output = tf.nn.dynamic_rnn(
+            self.cell_bw, self.input, sequence_length=self.sequence_length, dtype=tf.float32
+        )
+        output, _ = self.output
+        return output[:,:,]
+
+    def pop(self, input):
         _output = tf.nn.dynamic_rnn(
             self.cell_fw, input, initial_state= self.state,
             sequence_length=self.word_length, dtype=tf.float32)

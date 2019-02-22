@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-class RippleLSTM():
+class Win_LSTM():
 
     def __init__(self, config):
         self.config = config
@@ -23,5 +23,17 @@ class RippleLSTM():
                     cell_fw, cell_bw, self.word_embeddings,
                     sequence_length = self.sequence_length, dtype=tf.float32)
 
-
+    # tf.reverse_sequence(
+    #     input,
+    #     seq_lengths,
+    #     seq_axis=None,
+    #     batch_axis=None,
+    #     name=None,
+    #     seq_dim=None,
+    #     batch_dim=None
+    # )
+    # 以上， seq_axis与seq_dim是同一个东西
+    #        batch_axis与batch_dim是同一个东西
+    # seq_lengths的长度应为batch_dim对应那一维的维数
+    tf.reverse_sequence
 
