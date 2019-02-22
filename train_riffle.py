@@ -30,7 +30,10 @@ def main():
                          config.processing_tag, config.max_iter)
 
     # train model
-    model.train(train, dev)
+    # model.train(train, dev)
+
+
+
 
 if __name__ == "__main__":
     main()
