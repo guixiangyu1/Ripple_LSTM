@@ -20,10 +20,12 @@ class FW_lstm():
     #     outputs.append(output)
     # return (outputs, state)
     def push(self, input):
-        output = tf.nn.dynamic_rnn(
+        _output = tf.nn.dynamic_rnn(
             self.cell_fw, input, initial_state= self.state,
             sequence_length=self.word_length, dtype=tf.float32)
-        output, (self.state) = output
+        _, self.state = _output
+        _, hidden_state = self.state
+        return hidden_state
 
     # 测试总结：
     # 1. dynamic_rnn的输出output=（ndarray,LSTMStateTuple）
