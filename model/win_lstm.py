@@ -12,6 +12,10 @@ class WinLSTM():
 
         self.word_embeddings = None
         self.sequence_length = None
+        self.word_ids = None
+        self.char_ids = None
+        self.word_lengths = None
+
 
 
     def build(self):

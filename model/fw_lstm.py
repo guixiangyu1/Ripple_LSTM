@@ -9,9 +9,15 @@ class FwLSTM():
 
         self.cell_fw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
         self.state = self.cell_fw.zero_state(batch_size=self.config.batch_size,dtype=tf.float32)
-        self.word_length = None
+
         self.begin_word = None
         self.chars_of_begin = None
+        self.word_embeddings = None
+        self.begin_embeddings = None
+        self.word_ids = None
+        self.char_ids = None
+        self.word_lengths = None
+        self.sequence_lengths = None
 
     # The simplest form of RNN network generated is:
     #

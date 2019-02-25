@@ -11,6 +11,10 @@ class BwLSTM():
         self.sequence_length = None
         self.input = None
         self.output = None
+        self.word_embeddings = None
+        self.word_ids = None
+        self.char_ids =None
+        self.word_lengths = None
 
     def add_all_words(self):
         self.output = tf.nn.dynamic_rnn(

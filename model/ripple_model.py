@@ -56,6 +56,9 @@ class RippleModel(BaseModel):
         self.lr = tf.placeholder(dtype=tf.float32, shape=[],
                                  name="lr")
 
+        # self.word_ids_reverse = tf.reverse_sequence(self.word_ids, seq_lengths=self.sequence_lengths, batch_axis=0, seq_axis=-1)
+        # self.char_ids_reverse = tf.reverse_sequence(self.char_ids, seq_lengths=self.sequence_lengths, batch_axis=0, seq_axis=1)
+
     def get_feed_dict(self, words, labels=None, lr=None, dropout=None):
         """Given some data, pad it and build a feed dictionary
 
@@ -189,9 +192,13 @@ class RippleModel(BaseModel):
         For each word in each sentence of the batch, it corresponds to a vector
         of scores, of dimension equal to the number of tags.
         """
+
         with tf.variable_scope("bi-lstm"):
             cell_fw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
             cell_bw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
+
+
+
             (output_fw, output_bw), _ = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw, cell_bw, self.word_embeddings,
                 sequence_length=self.sequence_lengths, dtype=tf.float32)
@@ -243,48 +250,78 @@ class RippleModel(BaseModel):
         tf.summary.scalar("loss", self.loss)
 
     # def segment_data(self):
-    def add_boundary(self):
+    def add_boundary_embedding(self):
         with tf.variable_scope("boundary"):
-            self.begin = tf.get_variable(
-                name="<begin>",
+            embedding_begin = tf.get_variable(
+                name="<embedding_for_begin>",
                 dtype=tf.float32,
-                shape=[self.config.dim_word]
+                shape=[self.config.batch_size, 1, self.config.dim_word]
             )
-            self.end = tf.get_variable(
-                name="<end>",
+            embedding_end = tf.get_variable(
+                name="<embedding_for_end>",
                 dtype=tf.float32,
-                shape=[self.config.dim_word]
+                shape=[self.config.batch_size, 1, self.config.dim_word]
             )
             if self.config.use_chars:
-                self.char_of_begin = tf.get_variable(
-                    name="begin_char",
+                embedding_charbegin = tf.get_variable(
+                    name="enbedding_for_beginchar",
                     dtype=tf.float32,
-                    shape=[self.config.hidden_size_char]
+                    shape=[self.config.batch_size, 1, self.config.hidden_size_char*2]
                 )
-                self.char_of_begin = tf.get_variable(
-                    name="end_char",
+                embedding_charend = tf.get_variable(
+                    name="embedding_for_endchar",
                     dtype=tf.float32,
-                    shape=[self.config.hidden_size_char]
+                    shape=[self.config.batch_size, 1, self.config.hidden_size_char*2]
                 )
+                embedding_begin = tf.concat([embedding_begin, embedding_charbegin], -1)
+                embedding_end   = tf.concat([embedding_end, embedding_charend], -1)
+        self.begin_embedding = tf.nn.dropout(embedding_begin, self.dropout)
+        self.end_embedding   = tf.nn.dropout(embedding_end,   self.dropout)
 
 
     def build(self, mode=None):
         # NER specific functions
         if mode=="train":
             self.add_placeholders()
+            self.add_boundary_embedding()
+            self.add_word_embeddings_op()
+            self.add_logits_op()
 
-            self.add_boundary()
+
             for time_step in range(self.actions.shape[-1]):
                 if time_step == 0:
-                    self.FwLSTM.
+                    # if self.config.use_chars:
+                    #     self.FwLSTM.begin_embeddings = tf.concat([self.embedding_begin, self.embedding_charbegin], axis=-1)
+                    #     self.FwLSTM.word_ids = None
+                    #     self.FwLSTM.word_lengths = None
+                    #     self.FwLSTM.char_ids = None
+                    #     self.FwLSTM.sequence_lengths = None
+                    #
+                    #     self.WinLSTM.word_ids = self.word_ids[:, 0]
+                    #     self.WinLSTM.sequence_length = tf.ones(shape=[self.config.batch_size], dtype=tf.float32)
+                    #     self.WinLSTM.char_ids = self.char_ids[:, 0, :]
+                    #     self.WinLSTM.word_lengths = self.word_lengths[:, 0]
+                    #
+                    #     self.BwLSTM.word_ids = self.word_ids_reverse[:, :-1]
+                    #     self.BwLSTM.sequence_length = self.sequence_lengths - tf.ones(shape=[self.config.batch_size],dtype=tf.float32)
+                    #     self.BwLSTM.char_ids = self.char_ids_reverse[:,:-1,:]
+                    #     self.BwLSTM.word_lengths = self.word_lengths[:,1:]
+                    #     self.BwLSTM.end_embedding = tf.concat([self.embedding_end,self.embedding_charend], axis=-1)
+                    #
+                    # else:
+                    #     self.FwLSTM.word_embeddings = self.embedding_begin
+                    #
+                    #     self.WinLSTM.word_ids = self.word_ids[:,:,0]
+                    #     self.WinLSTM.sequence_length = tf.ones(shape=[self.config.batch_size], dtype=tf.float32)
+                    #
+                    #
+                    #     self.
+                # else:
 
 
 
 
         self.add_placeholders()
-
-        self.segment_data()
-
         self.add_word_embeddings_op()
         self.add_logits_op()
         self.add_pred_op()
