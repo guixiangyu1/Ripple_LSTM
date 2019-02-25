@@ -242,9 +242,49 @@ class RippleModel(BaseModel):
         # for tensorboard
         tf.summary.scalar("loss", self.loss)
 
-    def build(self, indicate=None):
+    # def segment_data(self):
+    def add_boundary(self):
+        with tf.variable_scope("boundary"):
+            self.begin = tf.get_variable(
+                name="<begin>",
+                dtype=tf.float32,
+                shape=[self.config.dim_word]
+            )
+            self.end = tf.get_variable(
+                name="<end>",
+                dtype=tf.float32,
+                shape=[self.config.dim_word]
+            )
+            if self.config.use_chars:
+                self.char_of_begin = tf.get_variable(
+                    name="begin_char",
+                    dtype=tf.float32,
+                    shape=[self.config.hidden_size_char]
+                )
+                self.char_of_begin = tf.get_variable(
+                    name="end_char",
+                    dtype=tf.float32,
+                    shape=[self.config.hidden_size_char]
+                )
+
+
+    def build(self, mode=None):
         # NER specific functions
+        if mode=="train":
+            self.add_placeholders()
+
+            self.add_boundary()
+            for time_step in range(self.actions.shape[-1]):
+                if time_step == 0:
+                    self.FwLSTM.
+
+
+
+
         self.add_placeholders()
+
+        self.segment_data()
+
         self.add_word_embeddings_op()
         self.add_logits_op()
         self.add_pred_op()
@@ -252,9 +292,9 @@ class RippleModel(BaseModel):
 
         # Generic functions that add training op and initialize session
         self.add_train_op(self.config.lr_method, self.lr, self.loss,
-                          self.config.clip, indicate=indicate)
+                          self.config.clip, mode=mode)
 
-        self.initialize_session(indicate=indicate)  # now self.sess is defined and vars are init
+        self.initialize_session(mode=mode)  # now self.sess is defined and vars are init
 
     def predict_batch(self, words):
         """
