@@ -1,10 +1,9 @@
 import tensorflow as tf
 
 
-class Win_LSTM():
+class WinLSTM():
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
 
         self.output_fw = None
         self.output_bw = None

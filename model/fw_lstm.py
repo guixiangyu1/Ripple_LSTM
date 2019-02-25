@@ -2,11 +2,11 @@ import tensorflow as tf
 
 
 
-class FW_lstm():
+class FwLSTM():
 
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
+
         self.cell_fw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
         self.state = self.cell_fw.zero_state(batch_size=self.config.batch_size,dtype=tf.float32)
         self.word_length = None

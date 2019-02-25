@@ -2,11 +2,10 @@ import tensorflow as tf
 
 
 
-class BW_lstm():
+class BwLSTM():
 
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
         self.cell_bw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
         self.state = self.cell_fw.zero_state(batch_size=self.config.batch_size,dtype=tf.float32)
         self.sequence_length = None
