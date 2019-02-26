@@ -186,23 +186,6 @@ class RippleModel(BaseModel):
 
         self.word_embeddings = tf.nn.dropout(word_embeddings, self.dropout)
 
-    def concat_embedding(self, embedding_this_batch, embedding_pre=None):
-        s = embedding_this_batch.shape
-        if embedding_pre is None:
-            return tf.reshape(embedding_this_batch,[1,s[0], s[1]])
-        else:
-            s_pre = embedding_pre.shape
-            if s_pre[1] > s[0]:
-                embedding_this_batch = tf.pad(embedding_this_batch, [[0,s_pre[1]-s[0]],[0,0]])
-            if s_pre[1] < s[0]:
-                embedding_pre = tf.pad(embedding_pre, [[0,0], [0,s[0]-s_pre[1]], [0,0]])
-        return tf.concat([embedding_pre, tf.reshape(embedding_this_batch, [1,-1,s[-1]])], axis=0)
-
-    def concat_length(self, length_this_batch, pre_length=None):
-        if pre_length is None:
-            return tf.convert_to_tensor([length_this_batch])
-        else:
-            return tf.concat([pre_length, [length_this_batch]], axis=0)
 
 
 
@@ -230,95 +213,8 @@ class RippleModel(BaseModel):
                 initial_state_fw=state_fw_begin, initial_state_bw=state_bw_end,
                 sequence_length=self.sequence_lengths, dtype=tf.float32)
 
-        # point_fw = tf.zeros([self.config.batch_size], dtype=tf.int32) #fw的内容不含该指针
-        # point_bw = tf.zeros([self.config.batch_size], dtype=tf.int32)  # bw的内容
-
-        point_fw = np.zeros([self.config.batch_size], dtype=int)
-        point_bw = np.zeros([self.config.batch_size], dtype=int)
-
-        with tf.variable_scope("win-lstm"):
-            cell_fw_win = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
-            cell_bw_win = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
-
-        win_word_embedding = None
-        win_sequence_lengths = None
-        for time_step in range(self.actions.shape[-1]):
-            # 得到输入数据，三个表示
-
-            for batch_id, (value_fw, value_bw) in enumerate(zip(point_fw, point_bw)):
-                # prepare for win lstm
-                embedding = self.word_embeddings[batch_id,value_fw:(value_bw+1),:]
-                assert embedding.shape[0] == value_bw - value_fw + 1
-                win_word_embedding = self.concat_embedding(embedding, win_word_embedding)
-
-                length = value_bw - value_fw + 1
-                win_sequence_lengths = self.concat_length(length, win_sequence_lengths)
-
-                # prepare for fw lstm
-                if value_fw==0:
-                    fw_lstm_output =
-
-                # prepare for bw lstm
-
-
-
-
-
-
-
-
-
-            # 更新指针
-
-
-
-
-
-            if i == 0:
-                _, fw_lstm_output = state_fw_begin
-                bw_lstm_output = self.get_output(output_bw, point_bw)
-                assert bw_lstm_output.shape == [self.config.batch_size, self.config.hidden_size_lstm]
-
-                win_word_embedding = self.word_embeddings[:,0:1,:]   #注意数据降维
-                win_sequence_lengths = tf.ones([self.config.batch_size], dtype=tf.int32)
-
-                with tf.variable_scope("win-lstm"):
-                    cell_fw_win = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
-                    cell_bw_win = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
-
-                    (_,(_,output_fw),(_,output_bw)) = tf.nn.bidirectional_dynamic_rnn(
-                        cell_fw_win, cell_bw_win, win_word_embedding,
-                        sequence_length = win_sequence_lengths, dtype=tf.float32
-                    )
-                win_lstm_output = tf.concat([output_fw,output_bw], axis=-1)
-
-                output = tf.concat([fw_lstm_output, win_lstm_output, bw_lstm_output], axis=-1)
-
-                # change point based on action
-                actions = list(self.actions[:,i])
-                shift_fw = []
-                shift_bw = []
-                for batch_id, action in enumerate(actions):
-                    if self.idx_to_action(action) == "OUT" or self.idx_to_action(action).startwith("CATCH"):
-                        shift_fw[batch_id] = win_sequence_lengths[batch_id]
-
-                    if self.idx_to_action(action) == "FUSION":
-                        shift_fw[batch_id] = 0
-
-
-            else:
-                win_word_embedding = self.word_embeddings
-
-
-
-
-
-
-
-
-
-            # output = tf.concat([output_fw, output_bw],
-            #                    axis=-1)  # shape = [batch_size, max_sentence_length,2*hidden_size_lstm]
+            output = tf.concat([output_fw, output_bw],
+                               axis=-1)  # shape = [batch_size, max_sentence_length,2*hidden_size_lstm]
             output = tf.nn.dropout(output, self.dropout)
         # sequence length 很重要
 
