@@ -186,6 +186,26 @@ class RippleModel(BaseModel):
 
         self.word_embeddings = tf.nn.dropout(word_embeddings, self.dropout)
 
+    def concat_embedding(self, embedding_this_batch, embedding_pre=None):
+        s = embedding_this_batch.shape
+        if embedding_pre is None:
+            return tf.reshape(embedding_this_batch,[1,s[0], s[1]])
+        else:
+            s_pre = embedding_pre.shape
+            if s_pre[1] > s[0]:
+                embedding_this_batch = tf.pad(embedding_this_batch, [[0,s_pre[1]-s[0]],[0,0]])
+            if s_pre[1] < s[0]:
+                embedding_pre = tf.pad(embedding_pre, [[0,0], [0,s[0]-s_pre[1]], [0,0]])
+        return tf.concat([embedding_pre, tf.reshape(embedding_this_batch, [1,-1,s[-1]])], axis=0)
+
+    def concat_length(self, length_this_batch, pre_length=None):
+        if pre_length is None:
+            return tf.convert_to_tensor([length_this_batch])
+        else:
+            return tf.concat([pre_length, [length_this_batch]], axis=0)
+
+
+
     def add_logits_op(self):
         """Defines self.logits
 
@@ -220,9 +240,30 @@ class RippleModel(BaseModel):
             cell_fw_win = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
             cell_bw_win = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
 
+        win_word_embedding = None
+        win_sequence_lengths = None
         for time_step in range(self.actions.shape[-1]):
             # 得到输入数据，三个表示
+
             for batch_id, (value_fw, value_bw) in enumerate(zip(point_fw, point_bw)):
+                # prepare for win lstm
+                embedding = self.word_embeddings[batch_id,value_fw:(value_bw+1),:]
+                assert embedding.shape[0] == value_bw - value_fw + 1
+                win_word_embedding = self.concat_embedding(embedding, win_word_embedding)
+
+                length = value_bw - value_fw + 1
+                win_sequence_lengths = self.concat_length(length, win_sequence_lengths)
+
+                # prepare for fw lstm
+                if value_fw==0:
+                    fw_lstm_output =
+
+                # prepare for bw lstm
+
+
+
+
+
 
 
 
