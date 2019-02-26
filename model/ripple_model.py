@@ -119,30 +119,30 @@ class RippleModel(BaseModel):
         with tf.variable_scope("words"):
             if self.config.embeddings is None:
                 self.logger.info("WARNING: randomly initializing word vectors")
-                _word_embeddings = tf.get_variable(
+                self._word_embeddings = tf.get_variable(
                     name="_word_embeddings",
                     dtype=tf.float32,
                     shape=[self.config.nwords, self.config.dim_word])
             else:
-                _word_embeddings = tf.Variable(
+                self._word_embeddings = tf.Variable(
                     self.config.embeddings,
                     name="_word_embeddings",
                     dtype=tf.float32)
                 # trainable=self.config.train_embeddings)
             # 已经没有文字了，只有word_id
-            word_embeddings = tf.nn.embedding_lookup(_word_embeddings,
+            word_embeddings = tf.nn.embedding_lookup(self._word_embeddings,
                                                      self.word_ids, name="word_embeddings")
             # [batchs_size, max sentence length, word_em_dim]
 
         with tf.variable_scope("chars"):
             if self.config.use_chars:
                 # get char embeddings matrix
-                _char_embeddings = tf.get_variable(
+                self._char_embeddings = tf.get_variable(
                     name="_char_embeddings",
                     dtype=tf.float32,
                     shape=[self.config.nchars, self.config.dim_char])
                 # embedding_lookup是将原来tensor中的id替换成id对应的向量
-                char_embeddings = tf.nn.embedding_lookup(_char_embeddings,
+                char_embeddings = tf.nn.embedding_lookup(self._char_embeddings,
                                                          self.char_ids, name="char_embeddings")
                 # [batch_size, max sentence length, max word length, char_em_dim]
 
@@ -153,12 +153,12 @@ class RippleModel(BaseModel):
                 word_lengths = tf.reshape(self.word_lengths, shape=[s[0] * s[1]])
 
                 # bi lstm on chars
-                cell_fw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_char,
+                self.char_cell_fw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_char,
                                                   state_is_tuple=True)
-                cell_bw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_char,
+                self.char_cell_bw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_char,
                                                   state_is_tuple=True)
                 _output = tf.nn.bidirectional_dynamic_rnn(
-                    cell_fw, cell_bw, char_embeddings,
+                    self.char_cell_fw, self.char_cell_bw, char_embeddings,
                     sequence_length=word_lengths, dtype=tf.float32)
                 # bidirectional_dynamic_rnn的输出为tuple，（outputs, output_states）
 
@@ -197,13 +197,87 @@ class RippleModel(BaseModel):
             cell_fw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
             cell_bw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
 
+            _, state_fw_begin = tf.nn.dynamic_rnn(
+                cell_fw, self.begin_embedding, dtype=tf.float32
+            )
+            _, state_bw_end = tf.nn.dynamic_rnn(
+                cell_bw, self.end_embedding, dtype=tf.float32
+            )
 
 
             (output_fw, output_bw), _ = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw, cell_bw, self.word_embeddings,
+                initial_state_fw=state_fw_begin, initial_state_bw=state_bw_end,
                 sequence_length=self.sequence_lengths, dtype=tf.float32)
-            output = tf.concat([output_fw, output_bw],
-                               axis=-1)  # shape = [batch_size, max_sentence_length,2*hidden_size_lstm]
+
+        # point_fw = tf.zeros([self.config.batch_size], dtype=tf.int32) #fw的内容不含该指针
+        # point_bw = tf.zeros([self.config.batch_size], dtype=tf.int32)  # bw的内容
+
+        point_fw = np.zeros([self.config.batch_size], dtype=int)
+        point_bw = np.zeros([self.config.batch_size], dtype=int)
+
+        with tf.variable_scope("win-lstm"):
+            cell_fw_win = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
+            cell_bw_win = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
+
+        for time_step in range(self.actions.shape[-1]):
+            # 得到输入数据，三个表示
+            for batch_id, (value_fw, value_bw) in enumerate(zip(point_fw, point_bw)):
+
+
+
+
+            # 更新指针
+
+
+
+
+
+            if i == 0:
+                _, fw_lstm_output = state_fw_begin
+                bw_lstm_output = self.get_output(output_bw, point_bw)
+                assert bw_lstm_output.shape == [self.config.batch_size, self.config.hidden_size_lstm]
+
+                win_word_embedding = self.word_embeddings[:,0:1,:]   #注意数据降维
+                win_sequence_lengths = tf.ones([self.config.batch_size], dtype=tf.int32)
+
+                with tf.variable_scope("win-lstm"):
+                    cell_fw_win = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
+                    cell_bw_win = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
+
+                    (_,(_,output_fw),(_,output_bw)) = tf.nn.bidirectional_dynamic_rnn(
+                        cell_fw_win, cell_bw_win, win_word_embedding,
+                        sequence_length = win_sequence_lengths, dtype=tf.float32
+                    )
+                win_lstm_output = tf.concat([output_fw,output_bw], axis=-1)
+
+                output = tf.concat([fw_lstm_output, win_lstm_output, bw_lstm_output], axis=-1)
+
+                # change point based on action
+                actions = list(self.actions[:,i])
+                shift_fw = []
+                shift_bw = []
+                for batch_id, action in enumerate(actions):
+                    if self.idx_to_action(action) == "OUT" or self.idx_to_action(action).startwith("CATCH"):
+                        shift_fw[batch_id] = win_sequence_lengths[batch_id]
+
+                    if self.idx_to_action(action) == "FUSION":
+                        shift_fw[batch_id] = 0
+
+
+            else:
+                win_word_embedding = self.word_embeddings
+
+
+
+
+
+
+
+
+
+            # output = tf.concat([output_fw, output_bw],
+            #                    axis=-1)  # shape = [batch_size, max_sentence_length,2*hidden_size_lstm]
             output = tf.nn.dropout(output, self.dropout)
         # sequence length 很重要
 
@@ -218,6 +292,21 @@ class RippleModel(BaseModel):
             output = tf.reshape(output, [-1, 2 * self.config.hidden_size_lstm])
             pred = tf.matmul(output, W) + b
             self.logits = tf.reshape(pred, [-1, nsteps, self.config.ntags])
+
+
+
+
+    def get_output(self,output,point):
+        '''
+
+        :param output: size [batch_size, max_length, hidden_dim]
+        :param point: [batch_size]
+        :return:
+        '''
+        batch_num = tf.reshape(tf.range(0,self.config.batch_size,dtype=tf.int32),[self.config.batch_size,1])
+        indices = tf.concat([batch_num, tf.reshape(point,[self.config.batch_size,1])], -1)
+        return tf.gather_nd(output,indices)
+
 
     def add_pred_op(self):
         """Defines self.labels_pred
@@ -285,11 +374,12 @@ class RippleModel(BaseModel):
             self.add_placeholders()
             self.add_boundary_embedding()
             self.add_word_embeddings_op()
+
             self.add_logits_op()
 
 
-            for time_step in range(self.actions.shape[-1]):
-                if time_step == 0:
+            # for time_step in range(self.actions.shape[-1]):
+            #     if time_step == 0:
                     # if self.config.use_chars:
                     #     self.FwLSTM.begin_embeddings = tf.concat([self.embedding_begin, self.embedding_charbegin], axis=-1)
                     #     self.FwLSTM.word_ids = None
@@ -458,3 +548,5 @@ class RippleModel(BaseModel):
         preds = [self.idx_to_tag[idx] for idx in list(pred_ids[0])]
 
         return preds
+
+
