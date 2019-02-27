@@ -5,9 +5,7 @@ import tensorflow as tf
 from .data_utils import minibatches, pad_sequences, get_chunks
 from .general_utils import Progbar
 from .base_model import BaseModel
-from .fw_lstm import FwLSTM
-from .bw_lstm import BwLSTM
-from .win_lstm import WinLSTM
+
 
 
 class RippleModel(BaseModel):
@@ -19,9 +17,7 @@ class RippleModel(BaseModel):
                            self.config.vocab_tags.items()}
         self.idx_to_action = {idx: action for action, idx in
                               self.config.vocab_actions.items()}
-        self.FwLSTM = FwLSTM()
-        self.BwLSTM = BwLSTM()
-        self.WinLSTM = WinLSTM()
+
 
     def add_placeholders(self):
         """Define placeholders = entries to computational graph"""
@@ -259,59 +255,43 @@ class RippleModel(BaseModel):
         For each word in each sentence of the batch, it corresponds to a vector
         of scores, of dimension equal to the number of tags.
         """
+        with tf.variable_scope("lstm_layer"):
+            with tf.variable_scope("fw_lstm"):
+                fw_cell = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
+                _, (_,fw_output) = tf.nn.dynamic_rnn(
+                    fw_cell, self.fw_word_embeddings, sequence_length=self.fw_sequence_lengths,dtype=tf.float32
+                )
 
-        with tf.variable_scope("lstm"):
-            fw_cell = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
-            bw_cell = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
-            wd_cell_fw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
-            wd_cell_bw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
+            with tf.variable_scope("bw_lstm"):
+                bw_cell = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
+                _, (_, bw_output) = tf.nn.dynamic_rnn(
+                    bw_cell, self.bw_word_embeddings, sequence_length=self.bw_sequence_lengths, dtype=tf.float32
+                )
+
+            with tf.variable_scope("wd_lstm"):
+                wd_cell_fw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
+                wd_cell_bw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
+                _,((_, wd_fw), (_, wd_bw)) = tf.nn.bidirectional_dynamic_rnn(
+                    wd_cell_fw, wd_cell_bw, self.bw_word_embeddings, sequence_length=self.bw_sequence_lengths,dtype=tf.float32
+                )
+                wd_output = tf.concat([wd_fw, wd_bw], axis=-1)
 
 
+        output = tf.concat([fw_output, wd_output, bw_output], axis=-1)
+        output = tf.nn.dropout(output, self.dropout)
 
-            _, state_fw_begin = tf.nn.dynamic_rnn(
-                cell_fw, self.begin_embedding, dtype=tf.float32
-            )
-            _, state_bw_end = tf.nn.dynamic_rnn(
-                cell_bw, self.end_embedding, dtype=tf.float32
-            )
-
-
-            (output_fw, output_bw), _ = tf.nn.bidirectional_dynamic_rnn(
-                cell_fw, cell_bw, self.word_embeddings,
-                initial_state_fw=state_fw_begin, initial_state_bw=state_bw_end,
-                sequence_length=self.sequence_lengths, dtype=tf.float32)
-
-            output = tf.concat([output_fw, output_bw],
-                               axis=-1)  # shape = [batch_size, max_sentence_length,2*hidden_size_lstm]
-            output = tf.nn.dropout(output, self.dropout)
-        # sequence length 很重要
 
         with tf.variable_scope("proj"):
             W = tf.get_variable("W", dtype=tf.float32,
-                                shape=[2 * self.config.hidden_size_lstm, self.config.ntags])
+                shape=[2 * (self.config.hidden_size_lstm + self.config.hidden_size_win), self.config.ntags])
 
             b = tf.get_variable("b", shape=[self.config.ntags],
                                 dtype=tf.float32, initializer=tf.zeros_initializer())
 
-            nsteps = tf.shape(output)[1]
-            output = tf.reshape(output, [-1, 2 * self.config.hidden_size_lstm])
-            pred = tf.matmul(output, W) + b
-            self.logits = tf.reshape(pred, [-1, nsteps, self.config.ntags])
-
-
-
-
-    def get_output(self,output,point):
-        '''
-
-        :param output: size [batch_size, max_length, hidden_dim]
-        :param point: [batch_size]
-        :return:
-        '''
-        batch_num = tf.reshape(tf.range(0,self.config.batch_size,dtype=tf.int32),[self.config.batch_size,1])
-        indices = tf.concat([batch_num, tf.reshape(point,[self.config.batch_size,1])], -1)
-        return tf.gather_nd(output,indices)
-
+            # nsteps = tf.shape(output)[1]
+            # output = tf.reshape(output, [-1, 2 * self.config.hidden_size_lstm])
+            self.logits = tf.matmul(output, W) + b
+            # self.logits = tf.reshape(pred, [-1, nsteps, self.config.ntags])
 
     def add_pred_op(self):
         """Defines self.labels_pred
@@ -322,8 +302,7 @@ class RippleModel(BaseModel):
         in python and not in pure tensroflow, we have to make the prediciton
         outside the graph.
         """
-        if not self.config.use_crf:  # labels_predict=[batch_size,nstep]
-            self.labels_pred = tf.cast(tf.argmax(self.logits, axis=-1),
+        self.labels_pred = tf.cast(tf.argmax(self.logits, axis=-1),
                                        tf.int32)
 
     def add_loss_op(self):
@@ -340,37 +319,10 @@ class RippleModel(BaseModel):
             losses = tf.boolean_mask(losses, mask)  # tf.sequence_mask和tf.boolean_mask 来对于序列的padding进行去除的内容
             self.loss = tf.reduce_mean(losses)
 
-        # for tensorboard
+        # for tensorboard ， 显示标量信息
         tf.summary.scalar("loss", self.loss)
 
-    # def segment_data(self):
-    def add_boundary_embedding(self):
-        with tf.variable_scope("boundary"):
-            embedding_begin = tf.get_variable(
-                name="<embedding_for_begin>",
-                dtype=tf.float32,
-                shape=[self.config.batch_size, 1, self.config.dim_word]
-            )
-            embedding_end = tf.get_variable(
-                name="<embedding_for_end>",
-                dtype=tf.float32,
-                shape=[self.config.batch_size, 1, self.config.dim_word]
-            )
-            if self.config.use_chars:
-                embedding_charbegin = tf.get_variable(
-                    name="enbedding_for_beginchar",
-                    dtype=tf.float32,
-                    shape=[self.config.batch_size, 1, self.config.hidden_size_char*2]
-                )
-                embedding_charend = tf.get_variable(
-                    name="embedding_for_endchar",
-                    dtype=tf.float32,
-                    shape=[self.config.batch_size, 1, self.config.hidden_size_char*2]
-                )
-                embedding_begin = tf.concat([embedding_begin, embedding_charbegin], -1)
-                embedding_end   = tf.concat([embedding_end, embedding_charend], -1)
-        self.begin_embedding = tf.nn.dropout(embedding_begin, self.dropout)
-        self.end_embedding   = tf.nn.dropout(embedding_end,   self.dropout)
+
 
 
     def build(self, mode=None):

@@ -160,7 +160,7 @@ def get_char_vocab(dataset):
 
     """
     vocab_char = set()
-    for words, _ in dataset:
+    for words, _, _ in dataset:
         for word in words:
             vocab_char.update(word)
 
