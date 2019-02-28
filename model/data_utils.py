@@ -416,6 +416,7 @@ def segment_data(all_words, all_actions, idx2ac):
     fw_word_ids = []
     bw_word_ids = []
     wd_word_ids = []
+    fw_sequence_lengths, wd_sequence_lengths, bw_sequence_lengths = [], [], []
 
     actions = []
 
@@ -423,12 +424,15 @@ def segment_data(all_words, all_actions, idx2ac):
     for one_sent_words, one_sent_actions in zip(all_words, all_actions):
         ac_length = len(one_sent_actions)
         fw_sequence_length = 0
-        bw_sequence_length = 1
-        wd_sequence_length = ac_length - bw_sequence_length - fw_sequence_length
+        wd_sequence_length = 1
+        bw_sequence_length = ac_length - wd_sequence_length - fw_sequence_length
 
 
         for ac in one_sent_actions:
             actions.append(ac)
+            fw_sequence_lengths.append(fw_sequence_length)
+            wd_sequence_lengths.append(wd_sequence_length)
+            bw_sequence_lengths.append(bw_sequence_length)
 
             if fw_sequence_length == 0:
 
@@ -455,7 +459,7 @@ def segment_data(all_words, all_actions, idx2ac):
         fw_word_ids = [zip(*sentence) for sentence in fw_word_ids]
         wd_word_ids = [zip(*sentence) for sentence in wd_word_ids]
         bw_word_ids = [zip(*sentence) for sentence in bw_word_ids]
-    return (fw_word_ids, wd_word_ids, bw_word_ids),  actions
+    return (fw_word_ids, wd_word_ids, bw_word_ids), (fw_sequence_lengths, wd_sequence_lengths, bw_sequence_lengths), actions
 
 
 def get_chunk_type(tok, idx_to_tag):

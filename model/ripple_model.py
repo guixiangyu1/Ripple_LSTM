@@ -72,7 +72,7 @@ class RippleModel(BaseModel):
         # self.word_ids_reverse = tf.reverse_sequence(self.word_ids, seq_lengths=self.sequence_lengths, batch_axis=0, seq_axis=-1)
         # self.char_ids_reverse = tf.reverse_sequence(self.char_ids, seq_lengths=self.sequence_lengths, batch_axis=0, seq_axis=1)
 
-    def get_feed_dict(self, words, actions=None, lr=None, dropout=None):
+    def get_feed_dict(self, words, sequence_lengths=None, actions=None, lr=None, dropout=None):
         """Given some data, pad it and build a feed dictionary
 
         Args:
@@ -87,20 +87,20 @@ class RippleModel(BaseModel):
 
         """
         # perform padding of the given data
-        all_word_ids, all_char_ids, all_sequence_lengths, all_word_lengths = [], [], [], []
+        all_word_ids, all_char_ids, all_word_lengths = [], [], []
         for each_words in words:
             if self.config.use_chars:
                 char_ids, word_ids = zip(*each_words)  # zip参数要求是iterable即可(batch(sentence[char]))
-                word_ids, sequence_lengths = pad_sequences(word_ids, 0)
+                word_ids, _ = pad_sequences(word_ids, 0)
                 char_ids, word_lengths = pad_sequences(char_ids, pad_tok=0,
                                                        nlevels=2)
                 all_char_ids.append(char_ids)
                 all_word_lengths.append(word_lengths)
             else:
-                word_ids, sequence_lengths = pad_sequences(each_words, 0)
+                word_ids, _ = pad_sequences(each_words, 0)
 
             all_word_ids.append(word_ids)
-            all_sequence_lengths.append(sequence_lengths)
+
 
 
 
@@ -115,9 +115,9 @@ class RippleModel(BaseModel):
             self.wd_word_ids: all_word_ids[1],
             self.bw_word_ids: all_word_ids[2],
 
-            self.fw_sequence_lengths: all_sequence_lengths[0],
-            self.wd_sequence_lengths: all_sequence_lengths[1],
-            self.bw_sequence_lengths: all_sequence_lengths[2],
+            self.fw_sequence_lengths: sequence_lengths[0],
+            self.wd_sequence_lengths: sequence_lengths[1],
+            self.bw_sequence_lengths: sequence_lengths[2]
 
         }
 
@@ -202,7 +202,7 @@ class RippleModel(BaseModel):
 
                 s_wd = tf.shape(wd_char_embeddings)
                 wd_char_embeddings = tf.reshape(wd_char_embeddings,
-                                                shape=[s_fw[0] * s_fw[1], s_fw[-2], self.config.dim_char])
+                                                shape=[s_wd[0] * s_wd[1], s_wd[-2], self.config.dim_char])
                 wd_word_lengths = tf.reshape(self.wd_word_lengths, shape=[s_wd[0] * s_wd[1]])
 
                 # bi lstm on chars
@@ -270,8 +270,8 @@ class RippleModel(BaseModel):
         self.bw_word_embeddings = tf.nn.dropout(bw_word_embeddings, self.dropout)
         self.wd_word_embeddings = tf.nn.dropout(wd_word_embeddings, self.dropout)
 
-        self.fw_sequence_lengths = self.fw_sequence_lengths + tf.ones([s[0]], dtype=tf.int32)
-        self.bw_sequence_lengths = self.bw_sequence_lengths + tf.ones([s[0]], dtype=tf.int32)
+        self.fw_sequence_lengths_with_begin = self.fw_sequence_lengths + tf.ones([s[0]], dtype=tf.int32)
+        self.bw_sequence_lengths_wint_end = self.bw_sequence_lengths + tf.ones([s[0]], dtype=tf.int32)
 
 
 
@@ -292,20 +292,20 @@ class RippleModel(BaseModel):
             with tf.variable_scope("fw_lstm"):
                 fw_cell = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
                 _, (_,fw_output) = tf.nn.dynamic_rnn(
-                    fw_cell, self.fw_word_embeddings, sequence_length=self.fw_sequence_lengths,dtype=tf.float32
+                    fw_cell, self.fw_word_embeddings, sequence_length=self.fw_sequence_lengths_with_begin,dtype=tf.float32
                 )
 
             with tf.variable_scope("bw_lstm"):
                 bw_cell = tf.contrib.rnn.LSTMCell(self.config.hidden_size_lstm)
                 _, (_, bw_output) = tf.nn.dynamic_rnn(
-                    bw_cell, self.bw_word_embeddings, sequence_length=self.bw_sequence_lengths, dtype=tf.float32
+                    bw_cell, self.bw_word_embeddings, sequence_length=self.bw_sequence_lengths_wint_end, dtype=tf.float32
                 )
 
             with tf.variable_scope("wd_lstm"):
                 wd_cell_fw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
                 wd_cell_bw = tf.contrib.rnn.LSTMCell(self.config.hidden_size_win)
                 _,((_, wd_fw), (_, wd_bw)) = tf.nn.bidirectional_dynamic_rnn(
-                    wd_cell_fw, wd_cell_bw, self.bw_word_embeddings, sequence_length=self.bw_sequence_lengths,dtype=tf.float32
+                    wd_cell_fw, wd_cell_bw, self.wd_word_embeddings, sequence_length=self.wd_sequence_lengths,dtype=tf.float32
                 )
                 wd_output = tf.concat([wd_fw, wd_bw], axis=-1)
 
@@ -425,8 +425,8 @@ class RippleModel(BaseModel):
         # iterate over dataset
         for i, (all_words, all_labels, all_actions) in enumerate(minibatches(train, batch_size)):
             # 修改了minibatch， 不变换数据形式，zip， 等下一步再做
-            words, actions = segment_data(all_words, all_actions, self.idx_to_action)
-            fd = self.get_feed_dict(words, actions, self.config.lr,
+            words, sequence_lengths, actions = segment_data(all_words, all_actions, self.idx_to_action)
+            fd = self.get_feed_dict(words, sequence_lengths, actions, self.config.lr,
                                        self.config.dropout)
 
             _, train_loss, summary = self.sess.run(
