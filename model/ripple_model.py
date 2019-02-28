@@ -2,9 +2,10 @@ import numpy as np
 import os
 import tensorflow as tf
 
-from .data_utils import minibatches, pad_sequences, get_chunks
+from .data_utils import minibatches, pad_sequences, get_chunks, segment_data
 from .general_utils import Progbar
 from .base_model import BaseModel
+
 
 
 
@@ -71,7 +72,7 @@ class RippleModel(BaseModel):
         # self.word_ids_reverse = tf.reverse_sequence(self.word_ids, seq_lengths=self.sequence_lengths, batch_axis=0, seq_axis=-1)
         # self.char_ids_reverse = tf.reverse_sequence(self.char_ids, seq_lengths=self.sequence_lengths, batch_axis=0, seq_axis=1)
 
-    def get_feed_dict(self, words, labels=None, lr=None, dropout=None):
+    def get_feed_dict(self, words, actions=None, lr=None, dropout=None):
         """Given some data, pad it and build a feed dictionary
 
         Args:
@@ -86,13 +87,22 @@ class RippleModel(BaseModel):
 
         """
         # perform padding of the given data
-        if self.config.use_chars:
-            char_ids, word_ids = zip(*words)  # zip参数要求是iterable即可(batch(sentence[char]))
-            word_ids, sequence_lengths = pad_sequences(word_ids, 0)
-            char_ids, word_lengths = pad_sequences(char_ids, pad_tok=0,
-                                                   nlevels=2)
-        else:
-            word_ids, sequence_lengths = pad_sequences(words, 0)
+        all_word_ids, all_char_ids, all_sequence_lengths, all_word_lengths = [], [], [], []
+        for each_words in words:
+            if self.config.use_chars:
+                char_ids, word_ids = zip(*each_words)  # zip参数要求是iterable即可(batch(sentence[char]))
+                word_ids, sequence_lengths = pad_sequences(word_ids, 0)
+                char_ids, word_lengths = pad_sequences(char_ids, pad_tok=0,
+                                                       nlevels=2)
+                all_char_ids.append(char_ids)
+                all_word_lengths.append(word_lengths)
+            else:
+                word_ids, sequence_lengths = pad_sequences(each_words, 0)
+
+            all_word_ids.append(word_ids)
+            all_sequence_lengths.append(sequence_lengths)
+
+
 
         # 两种数据格式
         # word_ids  [[1,2,3,4,5,0,0,0], [1,2,4,0,0,0,0,0], [1,3,4,5,6,7,8,9]]  sequence_lengths [5,3,8]
@@ -100,17 +110,29 @@ class RippleModel(BaseModel):
 
         # build feed dictionary
         feed = {
-            self.word_ids: word_ids,
-            self.sequence_lengths: sequence_lengths
+
+            self.fw_word_ids: all_word_ids[0],
+            self.wd_word_ids: all_word_ids[1],
+            self.bw_word_ids: all_word_ids[2],
+
+            self.fw_sequence_lengths: all_sequence_lengths[0],
+            self.wd_sequence_lengths: all_sequence_lengths[1],
+            self.bw_sequence_lengths: all_sequence_lengths[2],
+
         }
 
         if self.config.use_chars:
-            feed[self.char_ids] = char_ids
-            feed[self.word_lengths] = word_lengths
+            feed[self.fw_char_ids] = all_char_ids[0]
+            feed[self.wd_char_ids] = all_char_ids[1]
+            feed[self.bw_char_ids] = all_char_ids[2]
+            feed[self.fw_word_lengths] = all_word_lengths[0]
+            feed[self.wd_word_lengths] = all_word_lengths[1]
+            feed[self.bw_word_lengths] = all_word_lengths[2]
 
-        if labels is not None:
-            labels, _ = pad_sequences(labels, 0)
-            feed[self.labels] = labels
+
+        if actions is not None:
+            # labels, _ = pad_sequences(labels, 0)
+            feed[self.actions] = actions
 
         if lr is not None:
             feed[self.lr] = lr
@@ -118,7 +140,7 @@ class RippleModel(BaseModel):
         if dropout is not None:
             feed[self.dropout] = dropout
 
-        return feed, sequence_lengths
+        return feed
 
     def add_word_embeddings_op(self):
         """Defines self.word_embeddings
@@ -232,8 +254,10 @@ class RippleModel(BaseModel):
             end_word_embedding = tf.get_variable("end_word_embedding",
                                                     shape=[1, 1, self.config.dim_word], dtype=tf.float32)
 
-        begin_word_embeddings = tf.tile(begin_word_embedding, [fw_word_embeddings.shape[0], 1, 1])
-        end_word_embeddings   = tf.tile(end_word_embedding,   [fw_word_embeddings.shape[0], 1, 1])
+        s = tf.shape(fw_word_embeddings)
+
+        begin_word_embeddings = tf.tile(begin_word_embedding, [s[0], 1, 1])
+        end_word_embeddings   = tf.tile(end_word_embedding,   [s[0], 1, 1])
 
         # reverse backward embeddings
         bw_word_embeddings = tf.reverse_sequence(bw_word_embeddings,self.bw_sequence_lengths,
@@ -246,8 +270,8 @@ class RippleModel(BaseModel):
         self.bw_word_embeddings = tf.nn.dropout(bw_word_embeddings, self.dropout)
         self.wd_word_embeddings = tf.nn.dropout(wd_word_embeddings, self.dropout)
 
-        self.fw_sequence_lengths = self.fw_sequence_lengths + tf.ones([self.fw_word_embeddings.shape[0]], dtype=tf.int32)
-        self.bw_sequence_lengths = self.bw_sequence_lengths + tf.ones([self.bw_word_embeddings.shape[0]], dtype=tf.int32)
+        self.fw_sequence_lengths = self.fw_sequence_lengths + tf.ones([s[0]], dtype=tf.int32)
+        self.bw_sequence_lengths = self.bw_sequence_lengths + tf.ones([s[0]], dtype=tf.int32)
 
 
 
@@ -399,8 +423,10 @@ class RippleModel(BaseModel):
         prog = Progbar(target=nbatches)
 
         # iterate over dataset
-        for i, (words, labels) in enumerate(minibatches(train, batch_size)):
-            fd, _ = self.get_feed_dict(words, labels, self.config.lr,
+        for i, (all_words, all_labels, all_actions) in enumerate(minibatches(train, batch_size)):
+            # 修改了minibatch， 不变换数据形式，zip， 等下一步再做
+            words, actions = segment_data(all_words, all_actions, self.idx_to_action)
+            fd = self.get_feed_dict(words, actions, self.config.lr,
                                        self.config.dropout)
 
             _, train_loss, summary = self.sess.run(

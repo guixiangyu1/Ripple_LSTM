@@ -378,29 +378,84 @@ def pad_sequences(sequences, pad_tok, nlevels=1):
     return sequence_padded, sequence_length
 
 
+
+
 def minibatches(data, minibatch_size):
     """
     Args:
-        data: generator of (sentence, tags) tuples
+        data: generator of (sentence, tags, actions) tuples
         minibatch_size: (int)
 
     Yields:
         list of tuples
 
     """
-    x_batch, y_batch = [], []
-    for (x, y) in data:
+    x_batch, y_batch, z_batch = [], [], []
+    for (x, y, z) in data:
         if len(x_batch) == minibatch_size:
-            yield x_batch, y_batch
-            x_batch, y_batch = [], []
+            yield x_batch, y_batch, z_batch
+            x_batch, y_batch, z_batch = [], [], []
         # data may be (list of (list of char_id, word_id), list of (tags_id))
-        if type(x[0]) == tuple:
-            x = zip(*x)  # zip(*x) 生成可迭代对象。 x本身是个list，*代表变长参数输入，几个tuple.最后得到x是一个对象,俩tuple
+
+        # if type(x[0]) == tuple:
+        #     x = zip(*x)  # zip(*x) 生成可迭代对象。 x本身是个list，*代表变长参数输入，几个tuple.最后得到x是一个对象,俩tuple
         x_batch += [x]   # 可迭代对象的一个list，每个对象x包含一个tuple(list[char_ids]),tuple(word_ids)的迭代器
         y_batch += [y]
+        z_batch += [z]
 
     if len(x_batch) != 0:
-        yield x_batch, y_batch
+        yield x_batch, y_batch, z_batch
+
+def segment_data(all_words, all_actions, idx2ac):
+    '''
+    把输入的一个batch的句子，转化成n多个可用的、符合nn网络的数据，用于训练
+    :param all_words:
+    :param all_actions:
+    :return:
+    '''
+    fw_word_ids = []
+    bw_word_ids = []
+    wd_word_ids = []
+
+    actions = []
+
+
+    for one_sent_words, one_sent_actions in zip(all_words, all_actions):
+        ac_length = len(one_sent_actions)
+        fw_sequence_length = 0
+        bw_sequence_length = 1
+        wd_sequence_length = ac_length - bw_sequence_length - fw_sequence_length
+
+
+        for ac in one_sent_actions:
+            actions.append(ac)
+
+            if fw_sequence_length == 0:
+
+                fw_word_ids.append(one_sent_words[0:1])
+            else:
+                fw_word_ids.append(one_sent_words[:fw_sequence_length])
+
+            wd_word_ids.append(one_sent_words[fw_sequence_length:(fw_sequence_length + wd_sequence_length)])
+            if bw_sequence_length == 0:
+                bw_word_ids.append(one_sent_words[0:1])
+                break
+            else:
+                bw_word_ids.append(one_sent_words[fw_sequence_length + wd_sequence_length : ])
+
+            # refresh the fw wd bw length
+            bw_sequence_length -= 1
+            if idx2ac[ac].startswith("CATCH") or idx2ac[ac] == "OUT":
+                fw_sequence_length += wd_sequence_length
+                wd_sequence_length = 1
+
+            if idx2ac[ac] == "FUSION":
+                wd_sequence_length += 1
+    if type(fw_word_ids[0][0]) is tuple:
+        fw_word_ids = [zip(*sentence) for sentence in fw_word_ids]
+        wd_word_ids = [zip(*sentence) for sentence in wd_word_ids]
+        bw_word_ids = [zip(*sentence) for sentence in bw_word_ids]
+    return (fw_word_ids, wd_word_ids, bw_word_ids),  actions
 
 
 def get_chunk_type(tok, idx_to_tag):

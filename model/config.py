@@ -52,6 +52,9 @@ class Config():
         self.processing_tag  = get_processing_word(self.vocab_tags,
                 lowercase=False, allow_unk=False)
 
+        self.processing_action = get_processing_word(self.vocab_actions,
+                lowercase=False, allow_unk=False)
+
         # 3. get pre-trained embeddings 获取embeddings这个矩阵
         self.embeddings = (get_trimmed_glove_vectors(self.filename_trimmed)
                 if self.use_pretrained else None)
@@ -104,5 +107,5 @@ class Config():
     hidden_size_win = 150
 
     # NOTE: if both chars and crf, only 1.6x slower on GPU
-    use_crf = True # if crf, training is 1.7x slower on CPU
+    use_crf = False # if crf, training is 1.7x slower on CPU
     use_chars = True # if char embedding, training is 3.5x slower on CPU

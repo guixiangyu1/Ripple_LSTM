@@ -1,5 +1,4 @@
 from model.data_utils import CoNLLDataset
-from model.ner_model import NERModel
 from model.config import Config
 
 from model.ripple_model import RippleModel
@@ -21,9 +20,9 @@ def main():
 
     # create datasets [(char_ids), word_id]
     dev   = CoNLLDataset(config.filename_dev, config.processing_word,
-                         config.processing_tag, config.max_iter)
+                         config.processing_tag, config.processing_action, config.max_iter)
     train = CoNLLDataset(config.filename_train, config.processing_word,
-                         config.processing_tag, config.max_iter)
+                         config.processing_tag, config.processing_action, config.max_iter)
 
     # train model
     model.train(train, dev)
