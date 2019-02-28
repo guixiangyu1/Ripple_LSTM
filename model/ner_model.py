@@ -19,7 +19,7 @@ class NERModel(BaseModel):
                               self.config.vocab_actions.items()}
 
 
-    def add_placeholders(self):
+    def add_placeholders(self):    # placeholder 如果有在sess run中用到，就一定要有真东西，否则不feed也行
         """Define placeholders = entries to computational graph"""
 
         #placeholder会在稍后注入实际的东西

@@ -22,7 +22,6 @@ class RippleModel(BaseModel):
     def add_placeholders(self):
         """Define placeholders = entries to computational graph"""
 
-        # placeholder会在稍后注入实际的东西
         # shape = (batch size, max length of sentence in batch)
         self.fw_word_ids = tf.placeholder(tf.int32, shape=[None, None],
                                        name="fw_word_ids")
@@ -221,10 +220,20 @@ class RippleModel(BaseModel):
                 bw_word_embeddings = tf.concat([bw_word_embeddings, bw_output], axis=-1)
                 wd_word_embeddings = tf.concat([wd_word_embeddings, wd_output], axis=-1)
 
-        begin_word_embeddings = tf.get_variable("begin_word_embedding",
-            shape=[self.config.batch_size, 1, 2*self.config.hidden_size_char+self.config.dim_word], dtype=tf.float32)
-        end_word_embeddings = tf.get_variable("end_word_embedding",
-            shape=[self.config.batch_size, 1, 2*self.config.hidden_size_char+self.config.dim_word], dtype=tf.float32)
+
+        if self.config.use_chars:
+            begin_word_embedding = tf.get_variable("begin_word_embedding",
+                shape=[1, 1, 2*self.config.hidden_size_char+self.config.dim_word], dtype=tf.float32)
+            end_word_embedding = tf.get_variable("end_word_embedding",
+                shape=[1, 1, 2*self.config.hidden_size_char+self.config.dim_word], dtype=tf.float32)
+        else:
+            begin_word_embedding = tf.get_variable("begin_word_embedding",
+                                                    shape=[1, 1, self.config.dim_word], dtype=tf.float32)
+            end_word_embedding = tf.get_variable("end_word_embedding",
+                                                    shape=[1, 1, self.config.dim_word], dtype=tf.float32)
+
+        begin_word_embeddings = tf.tile(begin_word_embedding, [fw_word_embeddings.shape[0], 1, 1])
+        end_word_embeddings   = tf.tile(end_word_embedding,   [fw_word_embeddings.shape[0], 1, 1])
 
         # reverse backward embeddings
         bw_word_embeddings = tf.reverse_sequence(bw_word_embeddings,self.bw_sequence_lengths,
@@ -237,8 +246,8 @@ class RippleModel(BaseModel):
         self.bw_word_embeddings = tf.nn.dropout(bw_word_embeddings, self.dropout)
         self.wd_word_embeddings = tf.nn.dropout(wd_word_embeddings, self.dropout)
 
-        self.fw_sequence_lengths = self.fw_sequence_lengths + tf.ones([self.config.batch_size], dtype=tf.int32)
-        self.bw_sequence_lengths = self.bw_sequence_lengths + tf.ones([self.config.batch_size], dtype=tf.int32)
+        self.fw_sequence_lengths = self.fw_sequence_lengths + tf.ones([self.fw_word_embeddings.shape[0]], dtype=tf.int32)
+        self.bw_sequence_lengths = self.bw_sequence_lengths + tf.ones([self.bw_word_embeddings.shape[0]], dtype=tf.int32)
 
 
 
@@ -314,9 +323,9 @@ class RippleModel(BaseModel):
             self.loss = tf.reduce_mean(-log_likelihood)
         else:
             losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=self.logits, labels=self.labels)
-            mask = tf.sequence_mask(self.sequence_lengths)  # [batch_size, max_sentence_length]，不需要指定最大长度
-            losses = tf.boolean_mask(losses, mask)  # tf.sequence_mask和tf.boolean_mask 来对于序列的padding进行去除的内容
+                logits=self.logits, labels=self.actions)
+            # mask = tf.sequence_mask(self.sequence_lengths)  # [batch_size, max_sentence_length]，不需要指定最大长度
+            # losses = tf.boolean_mask(losses, mask)  # tf.sequence_mask和tf.boolean_mask 来对于序列的padding进行去除的内容
             self.loss = tf.reduce_mean(losses)
 
         # for tensorboard ， 显示标量信息
