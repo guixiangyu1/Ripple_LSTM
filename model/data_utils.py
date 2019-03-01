@@ -491,7 +491,7 @@ def generate_nextstep_data(words, actions=None, idx2ac=None):
                     wd_sequence_length += 1
 
         if bw_sequence_length < 0:
-            break
+            continue
         else:
             sent_ids.append(i)
             fw_sequence_lengths.append(fw_sequence_length)
@@ -507,10 +507,11 @@ def generate_nextstep_data(words, actions=None, idx2ac=None):
                 bw_words.append(each_sent[0:1])
             else:
                 bw_words.append(each_sent[fw_sequence_length + wd_sequence_length : ])
-    if type(fw_words[0][0]) is tuple:
-        fw_words = [zip(*sentence) for sentence in fw_words]
-        wd_words = [zip(*sentence) for sentence in wd_words]
-        bw_words = [zip(*sentence) for sentence in bw_words]
+    if len(fw_words) != 0:
+        if type(fw_words[0][0]) is tuple:
+            fw_words = [zip(*sentence) for sentence in fw_words]
+            wd_words = [zip(*sentence) for sentence in wd_words]
+            bw_words = [zip(*sentence) for sentence in bw_words]
     return (fw_words, wd_words, bw_words), (fw_sequence_lengths, wd_sequence_lengths, bw_sequence_lengths), sent_ids
 
 

@@ -383,7 +383,9 @@ class RippleModel(BaseModel):
             sequence_length
 
         """
-        actions = [[]] * len(words)
+        actions = []
+        for _ in range(len(words)):
+            actions.append([])
 
         words_processed, sequence_lengths, sent_ids = generate_nextstep_data(words, actions, self.idx_to_action)
         while len(sent_ids) != 0:

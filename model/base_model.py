@@ -102,7 +102,7 @@ class BaseModel(object):
         # else:
         #     self.saver = tf.train.Saver()
         # 新尝试
-        self.saver == tf.train.Saver()
+        self.saver = tf.train.Saver()
 
     def restore_session(self, dir_model):
         """Reload weights into session
