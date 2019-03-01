@@ -2,7 +2,7 @@ import numpy as np
 import os
 import tensorflow as tf
 
-from .data_utils import minibatches, pad_sequences, get_chunks, segment_data
+from .data_utils import minibatches, pad_sequences, get_chunks_from_act, segment_data, generate_nextstep_data
 from .general_utils import Progbar
 from .base_model import BaseModel
 
@@ -72,7 +72,7 @@ class RippleModel(BaseModel):
         # self.word_ids_reverse = tf.reverse_sequence(self.word_ids, seq_lengths=self.sequence_lengths, batch_axis=0, seq_axis=-1)
         # self.char_ids_reverse = tf.reverse_sequence(self.char_ids, seq_lengths=self.sequence_lengths, batch_axis=0, seq_axis=1)
 
-    def get_feed_dict(self, words, sequence_lengths=None, actions=None, lr=None, dropout=None):
+    def get_feed_dict(self, words, sequence_lengths, actions=None, lr=None, dropout=None):
         """Given some data, pad it and build a feed dictionary
 
         Args:
@@ -383,27 +383,20 @@ class RippleModel(BaseModel):
             sequence_length
 
         """
-        fd, sequence_lengths = self.get_feed_dict(words, dropout=1.0)
+        actions = [[]] * len(words)
 
-        if self.config.use_crf:
-            # get tag scores and transition params of CRF
-            viterbi_sequences = []
-            logits, trans_params = self.sess.run(
-                [self.logits, self.trans_params], feed_dict=fd)
-
-            # iterate over the sentences because no batching in vitervi_decode
-            for logit, sequence_length in zip(logits, sequence_lengths):
-                logit = logit[:sequence_length]  # keep only the valid steps
-                viterbi_seq, viterbi_score = tf.contrib.crf.viterbi_decode(
-                    logit, trans_params)
-                viterbi_sequences += [viterbi_seq]
-
-            return viterbi_sequences, sequence_lengths
-
-        else:
+        words_processed, sequence_lengths, sent_ids = generate_nextstep_data(words, actions, self.idx_to_action)
+        while len(sent_ids) != 0:
+            fd = self.get_feed_dict(words_processed, sequence_lengths, dropout=1.0)
             labels_pred = self.sess.run(self.labels_pred, feed_dict=fd)
+            assert len(labels_pred) == len(sent_ids)
+            for i in range(len(sent_ids)):
+                actions[sent_ids[i]].append(labels_pred[i])
+            words_processed, sequence_lengths, sent_ids = generate_nextstep_data(words, actions, self.idx_to_action)
 
-            return labels_pred, sequence_lengths
+
+
+        return actions
 
     def run_epoch(self, train, dev, epoch):
         """Performs one complete pass over the train set and evaluate on dev
@@ -457,31 +450,45 @@ class RippleModel(BaseModel):
         """
         accs = []
         correct_preds, total_correct, total_preds = 0., 0., 0.
-        for words, labels in minibatches(test, self.config.batch_size):
-            labels_pred, sequence_lengths = self.predict_batch(words)
 
-            for lab, lab_pred, length in zip(labels, labels_pred,
-                                             sequence_lengths):
-                lab = lab[:length]
-                lab_pred = lab_pred[:length]
-                accs += [a == b for (a, b) in zip(lab, lab_pred)]
+        for words, labels, actions in minibatches(test, self.config.batch_size):
+            actions_pred = self.predict_batch(words)
+            for act, act_pred in zip(actions, actions_pred):
+                accs += [a==b for (a,b) in zip(act, act_pred)]
 
-                lab_chunks = set(get_chunks(lab, self.config.vocab_tags))
-                lab_pred_chunks = set(get_chunks(lab_pred,
-                                                 self.config.vocab_tags))
-
-                correct_preds += len(lab_chunks & lab_pred_chunks)
-                total_preds += len(lab_pred_chunks)
+                lab_chunks = set(get_chunks_from_act(act, self.idx_to_action))
+                lab_chunks_pred = set(get_chunks_from_act(act_pred, self.idx_to_action))
+                correct_preds += len(lab_chunks & lab_chunks_pred)
+                total_preds += len(lab_chunks_pred)
                 total_correct += len(lab_chunks)
-
         p = correct_preds / total_preds if correct_preds > 0 else 0
         r = correct_preds / total_correct if correct_preds > 0 else 0
         f1 = 2 * p * r / (p + r) if correct_preds > 0 else 0
         acc = np.mean(accs)
-        print("p: ", p)
-        print("r: ", r)
+        return {"acc": 100 * acc, "precision": 100 * p, "recall": 100 * r, "f1": 100 * f1}
 
-        return {"acc": 100 * acc, "f1": 100 * f1}
+        #     for lab, lab_pred, length in zip(labels, labels_pred,
+        #                                      sequence_lengths):
+        #         lab = lab[:length]
+        #         lab_pred = lab_pred[:length]
+        #         accs += [a == b for (a, b) in zip(lab, lab_pred)]
+        #
+        #         lab_chunks = set(get_chunks(lab, self.config.vocab_tags))
+        #         lab_pred_chunks = set(get_chunks(lab_pred,
+        #                                          self.config.vocab_tags))
+        #
+        #         correct_preds += len(lab_chunks & lab_pred_chunks)
+        #         total_preds += len(lab_pred_chunks)
+        #         total_correct += len(lab_chunks)
+        #
+        # p = correct_preds / total_preds if correct_preds > 0 else 0
+        # r = correct_preds / total_correct if correct_preds > 0 else 0
+        # f1 = 2 * p * r / (p + r) if correct_preds > 0 else 0
+        # acc = np.mean(accs)
+        # print("p: ", p)
+        # print("r: ", r)
+        # return {"acc": 100 * acc, "precision": 100 * p, "recall": 100 * r, "f1": 100 * f1}
+
 
     def predict(self, words_raw):
         """Returns list of tags

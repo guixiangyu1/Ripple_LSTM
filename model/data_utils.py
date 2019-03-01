@@ -413,9 +413,9 @@ def segment_data(all_words, all_actions, idx2ac):
     :param all_actions:
     :return:
     '''
-    fw_word_ids = []
-    bw_word_ids = []
-    wd_word_ids = []
+    fw_words = []
+    bw_words = []
+    wd_words = []
     fw_sequence_lengths, wd_sequence_lengths, bw_sequence_lengths = [], [], []
 
     actions = []
@@ -436,16 +436,16 @@ def segment_data(all_words, all_actions, idx2ac):
 
             if fw_sequence_length == 0:
 
-                fw_word_ids.append(one_sent_words[0:1])
+                fw_words.append(one_sent_words[0:1])
             else:
-                fw_word_ids.append(one_sent_words[:fw_sequence_length])
+                fw_words.append(one_sent_words[:fw_sequence_length])
 
-            wd_word_ids.append(one_sent_words[fw_sequence_length:(fw_sequence_length + wd_sequence_length)])
+            wd_words.append(one_sent_words[fw_sequence_length:(fw_sequence_length + wd_sequence_length)])
             if bw_sequence_length == 0:
-                bw_word_ids.append(one_sent_words[0:1])
+                bw_words.append(one_sent_words[0:1])
                 break
             else:
-                bw_word_ids.append(one_sent_words[fw_sequence_length + wd_sequence_length : ])
+                bw_words.append(one_sent_words[fw_sequence_length + wd_sequence_length : ])
 
             # refresh the fw wd bw length
             bw_sequence_length -= 1
@@ -455,11 +455,65 @@ def segment_data(all_words, all_actions, idx2ac):
 
             if idx2ac[ac] == "FUSION":
                 wd_sequence_length += 1
-    if type(fw_word_ids[0][0]) is tuple:
-        fw_word_ids = [zip(*sentence) for sentence in fw_word_ids]
-        wd_word_ids = [zip(*sentence) for sentence in wd_word_ids]
-        bw_word_ids = [zip(*sentence) for sentence in bw_word_ids]
-    return (fw_word_ids, wd_word_ids, bw_word_ids), (fw_sequence_lengths, wd_sequence_lengths, bw_sequence_lengths), actions
+    if type(fw_words[0][0]) is tuple:
+        fw_words = [zip(*sentence) for sentence in fw_words]
+        wd_words = [zip(*sentence) for sentence in wd_words]
+        bw_words = [zip(*sentence) for sentence in bw_words]
+    return (fw_words, wd_words, bw_words), (fw_sequence_lengths, wd_sequence_lengths, bw_sequence_lengths), actions
+
+def generate_nextstep_data(words, actions=None, idx2ac=None):
+    '''
+
+    :param words: 始终不变，通过改变action来推动
+    :param actions: [[]] shape [batchsize, each_sentence_len]
+    :return:
+    '''
+    fw_words = []
+    bw_words = []
+    wd_words = []
+    sent_ids = []
+    fw_sequence_lengths, wd_sequence_lengths, bw_sequence_lengths = [], [], []
+    for i, each_sent in enumerate(words):
+        sent_len = len(each_sent)
+        fw_sequence_length = 0
+        wd_sequence_length = 1
+        bw_sequence_length = sent_len - wd_sequence_length - fw_sequence_length
+        if len(actions[0]) == 0:
+            pass
+        else:
+            for ac in actions[i]:
+                bw_sequence_length -= 1
+                if idx2ac[ac].startswith("CATCH") or idx2ac[ac] == "OUT":
+                    fw_sequence_length += wd_sequence_length
+                    wd_sequence_length = 1
+
+                if idx2ac[ac] == "FUSION":
+                    wd_sequence_length += 1
+
+        if bw_sequence_length < 0:
+            break
+        else:
+            sent_ids.append(i)
+            fw_sequence_lengths.append(fw_sequence_length)
+            wd_sequence_lengths.append(wd_sequence_length)
+            bw_sequence_lengths.append(bw_sequence_length)
+            if fw_sequence_length == 0:
+                fw_words.append(each_sent[0:1])
+            else:
+                fw_words.append(each_sent[:fw_sequence_length])
+
+            wd_words.append(each_sent[fw_sequence_length:(fw_sequence_length + wd_sequence_length)])
+            if bw_sequence_length == 0:
+                bw_words.append(each_sent[0:1])
+            else:
+                bw_words.append(each_sent[fw_sequence_length + wd_sequence_length : ])
+    if type(fw_words[0][0]) is tuple:
+        fw_words = [zip(*sentence) for sentence in fw_words]
+        wd_words = [zip(*sentence) for sentence in wd_words]
+        bw_words = [zip(*sentence) for sentence in bw_words]
+    return (fw_words, wd_words, bw_words), (fw_sequence_lengths, wd_sequence_lengths, bw_sequence_lengths), sent_ids
+
+
 
 
 def get_chunk_type(tok, idx_to_tag):
@@ -524,3 +578,27 @@ def get_chunks(seq, tags):
         chunks.append(chunk)
 
     return chunks
+
+
+
+def get_chunks_from_act(act, act_vocab):
+    chunks = []
+    fw_len = 0
+    wd_len = 1
+    bw_len = len(act) - fw_len - wd_len
+    for a in act:
+        if act_vocab[a] == "OUT":
+            fw_len += wd_len
+            wd_len = 1
+            bw_len -= 1
+        if act_vocab[a] == "FUSION":
+            wd_len += 1
+            bw_len -= 1
+        if act_vocab[a].startswith("CATCH"):
+            # (entity start word id, length, type)
+            chunks.append((fw_len, wd_len, act_vocab[a].split('-')[1]))
+            fw_len += wd_len
+            wd_len = 1
+            bw_len -= 1
+    return chunks
+
