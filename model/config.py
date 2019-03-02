@@ -76,11 +76,11 @@ class Config():
     use_pretrained = True
 
     # dataset
-    # filename_dev = "data/valid.txt"
-    # filename_test = "data/test.txt"
-    # filename_train = "data/train.txt"
-
-    filename_dev = filename_test = filename_train = "data/raw" # test
+    filename_dev = "data/valid.txt"
+    filename_test = "data/test.txt"
+    filename_train = "data/train.txt"
+    #
+    # filename_dev = filename_test = filename_train = "data/raw" # test
 
     max_iter = None # if not None, max number of examples in Dataset
 
@@ -92,14 +92,14 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs          = 2
+    nepochs          = 30
     dropout          = 0.5
-    batch_size       = 3
+    batch_size       = 15
     lr_method        = "adam"
     lr               = 0.001
     lr_decay         = 1.0
     clip             = -5.0 # if negative, no clipping
-    nepoch_no_imprv  = 5
+    nepoch_no_imprv  = 3
 
     # model hyperparameters
     hidden_size_char = 100 # lstm on chars
