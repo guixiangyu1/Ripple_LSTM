@@ -418,6 +418,8 @@ class RippleModel(BaseModel):
         prog = Progbar(target=nbatches)
 
         # iterate over dataset
+        # generate_segment_data(train)
+
         for i, (all_words, all_labels, all_actions) in enumerate(minibatches(train, batch_size)):
             # 修改了minibatch， 不变换数据形式，zip， 等下一步再做
             words, sequence_lengths, actions = segment_data(all_words, all_actions, self.idx_to_action)

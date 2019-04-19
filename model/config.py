@@ -70,7 +70,7 @@ class Config():
     dim_char = 100
 
     # glove files
-    filename_glove = "data/sskip.100.vectors"
+    filename_glove = "data/glove.6B.300d.txt"
     # trimmed embeddings (created from glove_filename with build_data.py)
     filename_trimmed = "data/glove.6B.{}d.trimmed.npz".format(dim_word)
     use_pretrained = True
@@ -94,7 +94,7 @@ class Config():
     train_embeddings = False
     nepochs          = 30
     dropout          = 0.5
-    batch_size       = 15
+    batch_size       = 3
     lr_method        = "adam"
     lr               = 0.001
     lr_decay         = 1.0

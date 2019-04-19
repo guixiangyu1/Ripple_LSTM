@@ -441,9 +441,10 @@ def segment_data(all_words, all_actions, idx2ac):
                 fw_words.append(one_sent_words[:fw_sequence_length])
 
             wd_words.append(one_sent_words[fw_sequence_length:(fw_sequence_length + wd_sequence_length)])
+
             if bw_sequence_length == 0:
                 bw_words.append(one_sent_words[0:1])
-                break
+                continue
             else:
                 bw_words.append(one_sent_words[fw_sequence_length + wd_sequence_length : ])
 
@@ -460,6 +461,8 @@ def segment_data(all_words, all_actions, idx2ac):
         wd_words = [zip(*sentence) for sentence in wd_words]
         bw_words = [zip(*sentence) for sentence in bw_words]
     return (fw_words, wd_words, bw_words), (fw_sequence_lengths, wd_sequence_lengths, bw_sequence_lengths), actions
+
+# def generate_segment_data()
 
 def generate_nextstep_data(words, actions=None, idx2ac=None):
     '''
